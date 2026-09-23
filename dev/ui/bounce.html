@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multichannel Bounce</title>
+    <style>
+      :root {
+        --bg: #1a1a1a;
+        --panel: #242424;
+        --panel-alt: #2c2c2c;
+        --line: #383838;
+        --text: #dcdcdc;
+        --muted: #8a8a8a;
+        --accent: #f0a30a;
+        --accent-text: #1a1a1a;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+      }
+
+      header {
+        flex: none;
+        padding: 14px 18px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .file-name {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .file-meta {
+        margin-top: 3px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      main {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 14px 18px;
+      }
+
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .field > label:first-child {
+        flex: none;
+        width: 108px;
+        color: var(--muted);
+      }
+
+      .segmented {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        overflow: hidden;
+      }
+
+      .segmented button {
+        appearance: none;
+        border: 0;
+        margin: 0;
+        padding: 5px 14px;
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .segmented button + button { border-left: 1px solid var(--line); }
+      .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+      input[type="text"], select {
+        appearance: none;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 8px;
+        font: inherit;
+      }
+
+      input[type="text"] {
+        width: 92px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      input:focus, select:focus, button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+
+      .hint { color: var(--muted); }
+
+      .destination {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .destination .path {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 8px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--panel);
+        color: var(--text);
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        direction: rtl;
+        text-align: left;
+      }
+
+      .destination .path.default { color: var(--muted); }
+
+      .destination button {
+        appearance: none;
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 10px;
+        background: var(--panel-alt);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+
+      .swatch {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .swatch[aria-pressed="true"] {
+        border-color: var(--text);
+      }
+
+      .swatch.none {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        width: auto;
+        padding: 0 8px;
+      }
+
+      .swatch.none[aria-pressed="true"] { border-color: var(--text); color: var(--text); }
+
+      .checks { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+
+      .checks label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+      .routing-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin: 4px 0 7px;
+      }
+
+      .routing-head h2 {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .link-button {
+        appearance: none;
+        background: none;
+        border: 0;
+        padding: 0 0 0 14px;
+        color: var(--accent);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .link-button:hover { text-decoration: underline; }
+
+      table { width: 100%; border-collapse: collapse; }
+
+      td {
+        padding: 3px 0;
+        vertical-align: middle;
+      }
+
+      td.channel { width: 150px; }
+
+      .badge {
+        display: inline-block;
+        min-width: 44px;
+        padding: 2px 7px;
+        margin-right: 8px;
+        border-radius: 3px;
+        background: var(--panel-alt);
+        color: var(--text);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+      }
+
+      td.arrow { width: 22px; color: var(--muted); text-align: center; }
+
+      td.target select { width: 100%; }
+
+      footer {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 18px;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      footer .spacer { flex: 1; }
+
+      footer button {
+        appearance: none;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 6px 16px;
+        background: var(--panel-alt);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      footer button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      #summary { color: var(--muted); }
+
+      .notice {
+        margin-top: 8px;
+        padding: 6px 9px;
+        border-radius: 4px;
+        border-left: 3px solid var(--accent);
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .notice strong { color: var(--text); font-weight: 600; }
+
+      input[type="text"].wide { width: 260px; }
+
+      td.wide-name {
+        width: 210px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mixer-label {
+        display: block;
+        margin-left: 52px;
+        color: var(--muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .checks .hint { font-size: 11px; line-height: 1.35; padding-left: 22px; }
+
+      .error-line {
+        margin: 10px 0 0;
+        color: #e2564a;
+        font-size: 12px;
+      }
+
+      footer button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="file-name">Multichannel Bounce</div>
+      <div class="file-meta" id="range"></div>
+      <div class="notice" id="prefx">
+        Live can only render audio <strong>before</strong> a track's devices, so
+        effects are not included. Volume and pan are applied afterwards by this
+        extension, from their <strong>current values only</strong> &mdash;
+        automation is ignored.
+      </div>
+    </header>
+
+    <main>
+      <div class="field">
+        <label for="file-name">File name</label>
+        <input type="text" id="file-name" class="wide" />
+        <span class="hint">.wav</span>
+      </div>
+
+      <div class="field">
+        <label for="channels">Channels</label>
+        <input type="text" id="channels" inputmode="numeric" />
+        <span class="hint" id="channels-hint"></span>
+      </div>
+
+      <div class="field">
+        <label id="dest-label">Save to</label>
+        <div class="destination" role="group" aria-labelledby="dest-label">
+          <span class="path" id="dest-path" dir="rtl"></span>
+          <button type="button" id="dest-change">Change…</button>
+          <button type="button" id="dest-reset" hidden>Reset</button>
+        </div>
+      </div>
+
+      <div class="checks">
+        <label><input type="checkbox" id="apply-mixer" /> Apply track volume and pan</label>
+        <span class="hint" id="approx-note" hidden>
+          Live reports volume as a fader position, so the dB shown below is
+          approximate. Check it against Live's mixer.
+        </span>
+      </div>
+
+      <div class="routing-head">
+        <h2>Bounce channels</h2>
+        <div>
+          <button type="button" class="link-button" id="fill-down">Fill down</button>
+        </div>
+      </div>
+
+      <table>
+        <tbody id="routing"></tbody>
+      </table>
+
+      <p class="error-line" id="error" hidden></p>
+    </main>
+
+    <footer>
+      <span id="summary"></span>
+      <span class="spacer"></span>
+      <button type="button" id="cancel">Cancel</button>
+      <button type="button" class="primary" id="confirm">Bounce</button>
+    </footer>
+
+    <script>
+      const STATE = __MCL_STATE__;
+
+      function closeWithResult(result) {
+        const message = { method: "close_and_send", params: [result] };
+        if (window.webkit?.messageHandlers?.live) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (window.chrome?.webview) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      const SKIP = "skip";
+      const INITIAL = STATE.initial;
+
+      const applyMixer = () => document.getElementById("apply-mixer").checked;
+
+      let channelCount = INITIAL ? INITIAL.channelCount : STATE.defaultChannelCount;
+      // One entry per track: the output channel index, or SKIP.
+      let assignments = INITIAL
+        ? INITIAL.assignments.map((a) => (a === null ? SKIP : a))
+        : STATE.sources.map((_, i) => i);
+
+      function clampChannelCount(value) {
+        if (!Number.isFinite(value)) return STATE.defaultChannelCount;
+        return Math.min(64, Math.max(1, Math.floor(value)));
+      }
+
+      function renderDestination() {
+        const pathEl = document.getElementById("dest-path");
+        pathEl.textContent = STATE.destination.path;
+        pathEl.title = STATE.destination.path;
+        pathEl.className = STATE.destination.isCustom ? "path" : "path default";
+        document.getElementById("dest-reset").hidden = !STATE.destination.isCustom;
+      }
+
+      function renderRouting() {
+        const tbody = document.getElementById("routing");
+        tbody.replaceChildren();
+
+        STATE.sources.forEach((source, sourceIndex) => {
+          const row = document.createElement("tr");
+
+          const nameCell = document.createElement("td");
+          nameCell.className = "channel wide-name";
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = source.badge;
+          nameCell.append(badge, document.createTextNode(source.label));
+
+          if (applyMixer() && source.mixerLabel) {
+            const mixer = document.createElement("span");
+            mixer.className = "mixer-label";
+            mixer.textContent = source.mixerLabel;
+            nameCell.append(mixer);
+          }
+
+          const arrowCell = document.createElement("td");
+          arrowCell.className = "arrow";
+          arrowCell.textContent = "\u2192";
+
+          const targetCell = document.createElement("td");
+          targetCell.className = "target";
+          const select = document.createElement("select");
+
+          for (let channel = 0; channel < channelCount; channel++) {
+            const option = document.createElement("option");
+            option.value = String(channel);
+            option.textContent = "Channel " + (channel + 1);
+            select.append(option);
+          }
+          const skipOption = document.createElement("option");
+          skipOption.value = SKIP;
+          skipOption.textContent = "Do not bounce";
+          select.append(skipOption);
+
+          select.value = String(assignments[sourceIndex]);
+          if (select.value !== String(assignments[sourceIndex])) {
+            // The stored channel no longer exists after a channel-count change.
+            assignments[sourceIndex] = SKIP;
+            select.value = SKIP;
+          }
+
+          select.addEventListener("change", () => {
+            assignments[sourceIndex] = select.value === SKIP ? SKIP : Number(select.value);
+            renderRouting();
+          });
+
+          targetCell.append(select);
+          row.append(nameCell, arrowCell, targetCell);
+          tbody.append(row);
+        });
+
+        validate();
+      }
+
+      /** Two tracks on one channel would silently drop one of them. */
+      function validate() {
+        const used = new Map();
+        const clashes = new Set();
+        assignments.forEach((assignment, sourceIndex) => {
+          if (assignment === SKIP) return;
+          if (used.has(assignment)) clashes.add(assignment);
+          used.set(assignment, sourceIndex);
+        });
+
+        const assigned = assignments.filter((a) => a !== SKIP).length;
+        const errorEl = document.getElementById("error");
+        const confirmEl = document.getElementById("confirm");
+
+        let message = "";
+        if (clashes.size > 0) {
+          const list = [...clashes].sort((a, b) => a - b).map((c) => c + 1).join(", ");
+          message = "Two sources share channel " + list + ". Give each its own channel.";
+        } else if (assigned === 0) {
+          message = "Assign at least one source to a channel.";
+        }
+
+        errorEl.textContent = message;
+        errorEl.hidden = message === "";
+        confirmEl.disabled = message !== "";
+
+        const silent = channelCount - assigned;
+        const parts = [assigned + (assigned === 1 ? " source" : " sources")];
+        parts.push(channelCount + "-channel file");
+        if (silent > 0) parts.push(silent + (silent === 1 ? " silent channel" : " silent channels"));
+        document.getElementById("summary").textContent = parts.join(" \u00b7 ");
+      }
+
+      function post(action) {
+        closeWithResult(
+          JSON.stringify({
+            action,
+            fileName: document.getElementById("file-name").value,
+            channelCount,
+            applyMixer: applyMixer(),
+            assignments: assignments.map((a) => (a === SKIP ? null : a)),
+          }),
+        );
+      }
+
+      document.getElementById("range").textContent = STATE.rangeLabel;
+      document.getElementById("apply-mixer").checked = INITIAL ? INITIAL.applyMixer : true;
+      document.getElementById("approx-note").hidden = !STATE.volumeIsApproximate;
+      document.getElementById("apply-mixer").addEventListener("change", renderRouting);
+      document.getElementById("file-name").value =
+        INITIAL ? INITIAL.fileName : STATE.defaultFileName;
+      document.getElementById("channels").value = String(channelCount);
+      document.getElementById("channels-hint").textContent =
+        STATE.sources.length +
+        (STATE.sources.length === 1 ? " source channel" : " source channels");
+
+      document.getElementById("channels").addEventListener("change", (event) => {
+        channelCount = clampChannelCount(parseInt(event.target.value, 10));
+        event.target.value = String(channelCount);
+        renderRouting();
+      });
+
+      document.getElementById("fill-down").addEventListener("click", () => {
+        assignments = STATE.sources.map((_, i) => (i < channelCount ? i : SKIP));
+        renderRouting();
+      });
+
+      document.getElementById("dest-change").addEventListener("click", () => post("changeFolder"));
+      document.getElementById("dest-reset").addEventListener("click", () => post("resetFolder"));
+      document.getElementById("cancel").addEventListener("click", () => closeWithResult(""));
+      document.getElementById("confirm").addEventListener("click", () => post("confirm"));
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeWithResult("");
+        if (event.key === "Enter" && event.target.tagName !== "SELECT" &&
+            !document.getElementById("confirm").disabled) {
+          post("confirm");
+        }
+      });
+
+      renderDestination();
+      renderRouting();
+    </script>
+  </body>
+</html>

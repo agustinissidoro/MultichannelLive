@@ -1,0 +1,40 @@
+# Normalize line endings: store LF in the repo, check out LF everywhere
+* text=auto eol=lf
+
+# Source and config
+*.ts        text diff=javascript
+*.mts       text diff=javascript
+*.js        text diff=javascript
+*.mjs       text diff=javascript
+*.json      text
+*.html      text diff=html
+*.css       text diff=css
+*.md        text diff=markdown
+
+# Lockfile: keep out of diffs and GitHub language stats
+package-lock.json  text -diff linguist-generated=true
+
+# Binary assets
+*.tgz   binary
+*.zip   binary
+*.ablx  binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.wav   binary
+*.aif   binary
+*.aiff  binary
+*.mp3   binary
+*.flac  binary
+
+# Vendored SDK tarballs are required by package.json (file: deps) — keep, but mark as vendored
+vendor/**  linguist-vendored=true
+
+# "Download ZIP" / source archives contain only the packaged extension
+/dev            export-ignore
+/README.md      export-ignore
+/.gitignore     export-ignore
+/.gitattributes export-ignore
+/.env.example   export-ignore

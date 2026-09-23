@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Load Multichannel File</title>
+    <style>
+      :root {
+        --bg: #1a1a1a;
+        --panel: #242424;
+        --panel-alt: #2c2c2c;
+        --line: #383838;
+        --text: #dcdcdc;
+        --muted: #8a8a8a;
+        --accent: #f0a30a;
+        --accent-text: #1a1a1a;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+      }
+
+      header {
+        flex: none;
+        padding: 14px 18px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .file-name {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .file-meta {
+        margin-top: 3px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      main {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 14px 18px;
+      }
+
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .field > label:first-child {
+        flex: none;
+        width: 108px;
+        color: var(--muted);
+      }
+
+      .segmented {
+        display: inline-flex;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        overflow: hidden;
+      }
+
+      .segmented button {
+        appearance: none;
+        border: 0;
+        margin: 0;
+        padding: 5px 14px;
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .segmented button + button { border-left: 1px solid var(--line); }
+      .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+      input[type="text"], select {
+        appearance: none;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 8px;
+        font: inherit;
+      }
+
+      input[type="text"] {
+        width: 92px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      input:focus, select:focus, button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+
+      .hint { color: var(--muted); }
+
+      .destination {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .destination .path {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 8px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--panel);
+        color: var(--text);
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        direction: rtl;
+        text-align: left;
+      }
+
+      .destination .path.default { color: var(--muted); }
+
+      .destination button {
+        appearance: none;
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 5px 10px;
+        background: var(--panel-alt);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
+
+      .swatch {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .swatch[aria-pressed="true"] {
+        border-color: var(--text);
+      }
+
+      .swatch.none {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        width: auto;
+        padding: 0 8px;
+      }
+
+      .swatch.none[aria-pressed="true"] { border-color: var(--text); color: var(--text); }
+
+      .checks { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+
+      .checks label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+
+      .routing-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin: 4px 0 7px;
+      }
+
+      .routing-head h2 {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .link-button {
+        appearance: none;
+        background: none;
+        border: 0;
+        padding: 0 0 0 14px;
+        color: var(--accent);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .link-button:hover { text-decoration: underline; }
+
+      table { width: 100%; border-collapse: collapse; }
+
+      td {
+        padding: 3px 0;
+        vertical-align: middle;
+      }
+
+      td.channel { width: 150px; }
+
+      .badge {
+        display: inline-block;
+        min-width: 44px;
+        padding: 2px 7px;
+        margin-right: 8px;
+        border-radius: 3px;
+        background: var(--panel-alt);
+        color: var(--text);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+      }
+
+      td.arrow { width: 22px; color: var(--muted); text-align: center; }
+
+      td.target select { width: 100%; }
+
+      footer {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 18px;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      footer .spacer { flex: 1; }
+
+      footer button {
+        appearance: none;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 6px 16px;
+        background: var(--panel-alt);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      footer button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--accent-text);
+        font-weight: 600;
+      }
+
+      #summary { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="file-name" id="file-name"></div>
+      <div class="file-meta" id="file-meta"></div>
+    </header>
+
+    <main>
+      <div class="field">
+        <label id="mode-label">Split as</label>
+        <div class="segmented" role="group" aria-labelledby="mode-label">
+          <button type="button" id="mode-mono" aria-pressed="true">Mono files</button>
+          <button type="button" id="mode-stereo" aria-pressed="false">Stereo pairs</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="start">Start at</label>
+        <input type="text" id="start" inputmode="decimal" />
+        <span class="hint" id="start-hint"></span>
+      </div>
+
+      <div class="field">
+        <label id="dest-label">Save to</label>
+        <div class="destination" role="group" aria-labelledby="dest-label">
+          <span class="path" id="dest-path" dir="rtl"></span>
+          <button type="button" id="dest-change">Change…</button>
+          <button type="button" id="dest-reset" hidden>Reset</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label id="color-label">Clip color</label>
+        <div class="swatches" role="group" aria-labelledby="color-label" id="swatches"></div>
+      </div>
+
+      <div class="checks">
+        <label><input type="checkbox" id="warp" /> Warp clips</label>
+        <label><input type="checkbox" id="rename" /> Rename existing target tracks to channel names</label>
+      </div>
+
+      <div class="routing-head">
+        <h2>Target tracks</h2>
+        <div>
+          <button type="button" class="link-button" id="fill-down">Fill down</button>
+          <button type="button" class="link-button" id="all-new">All to new tracks</button>
+        </div>
+      </div>
+
+      <table>
+        <tbody id="routing"></tbody>
+      </table>
+    </main>
+
+    <footer>
+      <span id="summary"></span>
+      <span class="spacer"></span>
+      <button type="button" id="cancel">Cancel</button>
+      <button type="button" class="primary" id="confirm">Load</button>
+    </footer>
+
+    <script>
+      const STATE = __MCL_STATE__;
+
+      /** Posts the result back to the Extension Host and closes the dialog. */
+      function closeWithResult(result) {
+        const message = { method: "close_and_send", params: [result] };
+        if (window.webkit?.messageHandlers?.live) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (window.chrome?.webview) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      // STATE.initial is present when the dialog was reopened after the
+      // output folder changed; it restores everything the user had set.
+      const INITIAL = STATE.initial;
+
+      let mode = INITIAL ? INITIAL.mode : STATE.defaultMode;
+      let colorValue = INITIAL
+        ? INITIAL.color
+        : (STATE.colors[STATE.defaultColorIndex]?.value ?? null);
+      // Per-mode target choice, so toggling modes does not lose an assignment.
+      const assignments = { mono: [], stereo: [] };
+
+      const NEW_TRACK = "new";
+
+      /**
+       * Default routing: walk the selected tracks first, then continue down the
+       * remaining audio tracks, then fall back to creating new ones.
+       */
+      function defaultAssignment(groupCount) {
+        const ordered = [];
+        for (const index of STATE.selectedTrackIndexes) ordered.push(index);
+        const firstSelected = STATE.selectedTrackIndexes[0];
+        for (const track of STATE.tracks) {
+          if (ordered.includes(track.index)) continue;
+          if (firstSelected !== undefined && track.index < firstSelected) continue;
+          ordered.push(track.index);
+        }
+        if (ordered.length === 0) {
+          for (const track of STATE.tracks) ordered.push(track.index);
+        }
+
+        return Array.from({ length: groupCount }, (_, i) =>
+          i < ordered.length ? ordered[i] : NEW_TRACK,
+        );
+      }
+
+      for (const key of ["mono", "stereo"]) {
+        const restored = INITIAL && INITIAL.assignmentsByMode[key];
+        assignments[key] =
+          restored && restored.length === STATE.groupPlans[key].length
+            ? restored.map((entry) => (entry === null ? NEW_TRACK : entry))
+            : defaultAssignment(STATE.groupPlans[key].length);
+      }
+
+      function formatBeats(beats) {
+        // Live counts bars from 1 and assumes 4/4 here; the beat value is what
+        // actually gets sent back, so this is only a readout.
+        const bar = Math.floor(beats / 4) + 1;
+        const beat = Math.floor(beats % 4) + 1;
+        const sixteenth = Math.floor(((beats % 1) * 4)) + 1;
+        return bar + "." + beat + "." + sixteenth;
+      }
+
+      function parseStart() {
+        const value = parseFloat(document.getElementById("start").value.replace(",", "."));
+        return Number.isFinite(value) && value >= 0 ? value : 0;
+      }
+
+      function renderRouting() {
+        const groups = STATE.groupPlans[mode];
+        const tbody = document.getElementById("routing");
+        tbody.replaceChildren();
+
+        groups.forEach((group, groupIndex) => {
+          const row = document.createElement("tr");
+
+          const channelCell = document.createElement("td");
+          channelCell.className = "channel";
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = group.channels.map((c) => c + 1).join("+");
+          channelCell.append(badge, document.createTextNode(group.label));
+
+          const arrowCell = document.createElement("td");
+          arrowCell.className = "arrow";
+          arrowCell.textContent = "→";
+
+          const targetCell = document.createElement("td");
+          targetCell.className = "target";
+          const select = document.createElement("select");
+
+          for (const track of STATE.tracks) {
+            const option = document.createElement("option");
+            option.value = String(track.index);
+            option.textContent = track.index + 1 + ": " + track.name;
+            select.append(option);
+          }
+          const newOption = document.createElement("option");
+          newOption.value = NEW_TRACK;
+          newOption.textContent = "＋ New audio track";
+          select.append(newOption);
+
+          select.value = String(assignments[mode][groupIndex]);
+          // The stored target may name a track that no longer exists, or is
+          // not an audio track. The browser silently ignores such a value, so
+          // fall back to a new track rather than showing the wrong row.
+          if (select.value !== String(assignments[mode][groupIndex])) {
+            assignments[mode][groupIndex] = NEW_TRACK;
+            select.value = NEW_TRACK;
+          }
+
+          select.addEventListener("change", () => {
+            assignments[mode][groupIndex] =
+              select.value === NEW_TRACK ? NEW_TRACK : Number(select.value);
+            renderSummary();
+          });
+
+          targetCell.append(select);
+          row.append(channelCell, arrowCell, targetCell);
+          tbody.append(row);
+        });
+
+        renderSummary();
+      }
+
+      function renderSummary() {
+        const groups = STATE.groupPlans[mode];
+        const newTracks = assignments[mode].filter((a) => a === NEW_TRACK).length;
+        const parts = [groups.length + (groups.length === 1 ? " clip" : " clips")];
+        if (newTracks > 0) {
+          parts.push(newTracks + (newTracks === 1 ? " new track" : " new tracks"));
+        }
+        document.getElementById("summary").textContent = parts.join(" · ");
+        document.getElementById("confirm").textContent = "Load " + groups.length;
+      }
+
+      function setMode(next) {
+        mode = next;
+        document.getElementById("mode-mono").setAttribute("aria-pressed", String(next === "mono"));
+        document.getElementById("mode-stereo").setAttribute("aria-pressed", String(next === "stereo"));
+        renderRouting();
+      }
+
+      function renderSwatches() {
+        const container = document.getElementById("swatches");
+        container.replaceChildren();
+
+        const add = (label, value, isNone) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = isNone ? "swatch none" : "swatch";
+          button.title = label;
+          button.setAttribute("aria-label", label);
+          button.setAttribute("aria-pressed", String(colorValue === value));
+          if (isNone) {
+            button.textContent = "Default";
+          } else {
+            button.style.background = "#" + value.toString(16).padStart(6, "0");
+          }
+          button.addEventListener("click", () => {
+            colorValue = value;
+            renderSwatches();
+          });
+          container.append(button);
+        };
+
+        for (const color of STATE.colors) add(color.label, color.value, false);
+        add("Leave Live's default color", null, true);
+      }
+
+      function post(action) {
+        const toNull = (list) => list.map((a) => (a === NEW_TRACK ? null : a));
+        closeWithResult(
+          JSON.stringify({
+            action,
+            mode,
+            color: colorValue,
+            startTime: parseStart(),
+            warp: document.getElementById("warp").checked,
+            renameTargetTracks: document.getElementById("rename").checked,
+            assignments: toNull(assignments[mode]),
+            // Both routings travel, so reopening after a folder change can
+            // restore whichever mode the user was not looking at too.
+            assignmentsByMode: {
+              mono: toNull(assignments.mono),
+              stereo: toNull(assignments.stereo),
+            },
+          }),
+        );
+      }
+
+      function confirm() {
+        post("confirm");
+      }
+
+      function renderDestination() {
+        const pathEl = document.getElementById("dest-path");
+        pathEl.textContent = STATE.destination.path;
+        pathEl.title = STATE.destination.path;
+        pathEl.className = STATE.destination.isCustom ? "path" : "path default";
+        document.getElementById("dest-reset").hidden = !STATE.destination.isCustom;
+      }
+
+      document.getElementById("file-name").textContent = STATE.fileName;
+      document.getElementById("file-meta").textContent = STATE.fileMeta;
+      const seededStart = INITIAL ? INITIAL.startTime : STATE.startTime;
+      document.getElementById("warp").checked = INITIAL ? INITIAL.warp : false;
+      document.getElementById("rename").checked = INITIAL ? INITIAL.renameTargetTracks : false;
+      document.getElementById("start").value = String(Math.round(seededStart * 1000) / 1000);
+      document.getElementById("start-hint").textContent = "beats · " + formatBeats(STATE.startTime);
+
+      document.getElementById("start").addEventListener("input", () => {
+        document.getElementById("start-hint").textContent = "beats · " + formatBeats(parseStart());
+      });
+
+      document.getElementById("mode-mono").addEventListener("click", () => setMode("mono"));
+      document.getElementById("mode-stereo").addEventListener("click", () => setMode("stereo"));
+
+      // Re-apply the default routing, which is also what "fill down" means:
+      // consecutive tracks starting from the first target.
+      document.getElementById("fill-down").addEventListener("click", () => {
+        const first = assignments[mode][0];
+        const start = first === NEW_TRACK ? null : first;
+        const ordered = STATE.tracks.map((t) => t.index).filter((i) => start === null || i >= start);
+        assignments[mode] = assignments[mode].map((_, i) =>
+          i < ordered.length ? ordered[i] : NEW_TRACK,
+        );
+        renderRouting();
+      });
+
+      document.getElementById("all-new").addEventListener("click", () => {
+        assignments[mode] = assignments[mode].map(() => NEW_TRACK);
+        renderRouting();
+      });
+
+      document.getElementById("cancel").addEventListener("click", () => closeWithResult(""));
+      document.getElementById("confirm").addEventListener("click", confirm);
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeWithResult("");
+        if (event.key === "Enter" && event.target.tagName !== "SELECT") confirm();
+      });
+
+      document.getElementById("dest-change").addEventListener("click", () => post("changeFolder"));
+      document.getElementById("dest-reset").addEventListener("click", () => post("resetFolder"));
+
+      renderDestination();
+      renderSwatches();
+      setMode(mode);
+    </script>
+  </body>
+</html>

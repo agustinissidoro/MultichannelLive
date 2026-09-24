@@ -1,4 +1,4 @@
-# MultichannelLive
+# Multichannel Live
 
 An Ableton Live extension for working with interleaved multichannel audio.
 It splits a multichannel file into clips across tracks, and bounces selected

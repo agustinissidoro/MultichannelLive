@@ -27,7 +27,8 @@ export interface AudioFileInfo {
   channelNames: string[];
   /**
    * Set when the original file was not WAV/AIFF and had to be decoded to an
-   * intermediate WAV first. Holds the path of the user's original file, and
+   * intermediate WAV first, or was outside the extension's sandbox and had to
+   * be copied into the temp directory. Holds the path of the user's original file, and
    * means {@link filePath} is a temporary we own and should clean up.
    */
   decodedFrom?: string;

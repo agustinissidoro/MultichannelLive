@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { AudioFileInfo } from "./types.js";
 import { readAiffInfo } from "./aiff.js";
 import { readWavInfo } from "./wav.js";
+import { isExecutableFile } from "../util/sandbox.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -25,12 +26,9 @@ export async function findFfmpeg(): Promise<string | null> {
   if (cachedFfmpegPath !== undefined) return cachedFfmpegPath;
 
   for (const candidate of FFMPEG_FALLBACK_PATHS) {
-    try {
-      await fs.access(candidate, fs.constants.X_OK);
+    if (await isExecutableFile(candidate)) {
       cachedFfmpegPath = candidate;
       return candidate;
-    } catch {
-      // Try the next one.
     }
   }
 

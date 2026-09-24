@@ -1,8 +1,8 @@
-import { constants as fsConstants, existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ApiVersion, ExtensionContext } from "@ableton-extensions/sdk";
 import { buildWavHeader } from "../audio/wav.js";
+import { ensureWritableDirectory, pathExists, removeFile } from "../util/sandbox.js";
 
 /** The folder Live places inside every Project folder. */
 const PROJECT_MARKER = "Ableton Project Info";
@@ -34,8 +34,7 @@ export interface Destination {
  */
 export async function tryCustomDirectory(directory: string): Promise<Destination | null> {
   try {
-    await fs.mkdir(directory, { recursive: true });
-    await fs.access(directory, fsConstants.W_OK);
+    await ensureWritableDirectory(directory);
     return { directory, isCustom: true, isSavedProject: true };
   } catch {
     return null;
@@ -83,7 +82,7 @@ export async function resolveClipsDirectory<V extends ApiVersion>(
 ): Promise<ClipsDirectory> {
   const { projectRoot, isSavedProject } = await discoverProjectRoot(context, tempDirectory);
   const directory = path.join(projectRoot, CLIPS_FOLDER_NAME);
-  await fs.mkdir(directory, { recursive: true });
+  await ensureWritableDirectory(directory);
   return { directory, projectRoot, isSavedProject };
 }
 
@@ -116,14 +115,14 @@ async function discoverProjectRoot<V extends ApiVersion>(
     await fs.rm(probePath, { force: true }).catch(() => {});
   }
 
-  await fs.rm(importedPath, { force: true }).catch(() => {});
+  await removeFile(importedPath);
 
   return projectRootFor(importedPath);
 }
 
 /** Whether a folder is a real, saved Live Project. */
-export function isLiveProjectFolder(directory: string): boolean {
-  return existsSync(path.join(directory, PROJECT_MARKER));
+export function isLiveProjectFolder(directory: string): Promise<boolean> {
+  return pathExists(path.join(directory, PROJECT_MARKER));
 }
 
 /**
@@ -133,14 +132,14 @@ export function isLiveProjectFolder(directory: string): boolean {
  * actually found. Without it we are guessing, and the guess is very likely a
  * temporary folder belonging to a Set that has never been saved.
  */
-export function projectRootFor(importedPath: string): {
+export async function projectRootFor(importedPath: string): Promise<{
   projectRoot: string;
   isSavedProject: boolean;
-} {
+}> {
   let directory = path.dirname(importedPath);
 
   for (let level = 0; level < MAX_WALK_UP; level++) {
-    if (isLiveProjectFolder(directory)) return { projectRoot: directory, isSavedProject: true };
+    if (await isLiveProjectFolder(directory)) return { projectRoot: directory, isSavedProject: true };
 
     const parent = path.dirname(directory);
     if (parent === directory) break;

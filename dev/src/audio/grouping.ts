@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+import { pathExists } from "../util/sandbox.js";
 import * as path from "node:path";
 import type { AudioFileInfo, ChannelGroup } from "./types.js";
 
@@ -62,12 +62,12 @@ export function outputFileNameFor(baseName: string, group: ChannelGroup): string
  * Appends ` 2`, ` 3`, … until the path is free, so re-running the command on
  * the same file never overwrites clips already placed in the Set.
  */
-export function uniquePath(directory: string, fileName: string): string {
+export async function uniquePath(directory: string, fileName: string): Promise<string> {
   const { name, ext } = path.parse(fileName);
   let candidate = path.join(directory, fileName);
   let counter = 2;
 
-  while (fs.existsSync(candidate)) {
+  while (await pathExists(candidate)) {
     candidate = path.join(directory, `${name} ${counter}${ext}`);
     counter++;
   }

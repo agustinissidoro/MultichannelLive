@@ -66,6 +66,7 @@ import {
   type BounceDialogResult,
 } from "./ui/bounceDialog.js";
 import { pickAudioFiles, pickFolder } from "./util/filePicker.js";
+import { readableCopy, removeFile, writeThroughSandbox } from "./util/sandbox.js";
 
 const API_VERSION = "1.0.0";
 
@@ -306,6 +307,7 @@ async function loadOneFile<V extends ApiVersion>(
       info,
       originalFileName: displayFileName(filePath),
       clipsDirectory: routing.destination.directory,
+      tempDirectory,
       groups: groupPlans[routing.choice.mode],
       choice: routing.choice,
     });
@@ -485,19 +487,22 @@ async function bounceSelection<V extends ApiVersion>(
       };
     });
 
-    const outputPath = uniquePath(chosen.directory, `${result.fileName}.wav`);
+    const outputPath = await uniquePath(chosen.directory, `${result.fileName}.wav`);
 
     const bounceOutcome = await context.ui.withinProgressDialog(
       "Writing the multichannel file…",
       { progress: 0 },
       async (update, signal): Promise<{ ok: boolean; error?: Error; summary?: string }> => {
         try {
-          const written = await interleave({
-            channelMap,
-            outputPath,
-            signal,
-            onProgress: (fraction) =>
-              update("Writing the multichannel file…", Math.round(fraction * 100)),
+          let written!: Awaited<ReturnType<typeof interleave>>;
+          await writeThroughSandbox([outputPath], tempDirectory, async ([target]) => {
+            written = await interleave({
+              channelMap,
+              outputPath: target!,
+              signal,
+              onProgress: (fraction) =>
+                update("Writing the multichannel file…", Math.round(fraction * 100)),
+            });
           });
 
           return {
@@ -698,20 +703,23 @@ async function splitClipToMono<V extends ApiVersion>(
       `Splitting ${displayFileName(filePath)} to mono\u2026`,
       { progress: 0 },
       async (update, signal): Promise<{ ok: boolean; error?: Error; clips?: number }> => {
-        const outputPaths = groups.map((group) =>
-          uniquePath(destination.directory, outputFileNameFor(baseName, group)),
-        );
+        let outputPaths: string[] = [];
         let placementStarted = false;
 
         try {
-          await deinterleave({
-            info,
-            groups,
-            outputPaths,
-            signal,
-            onProgress: (fraction) =>
-              update(`Splitting ${groups.length} channels\u2026`, Math.round(fraction * 90)),
-          });
+          outputPaths = await Promise.all(
+            groups.map((group) => uniquePath(destination.directory, outputFileNameFor(baseName, group))),
+          );
+          await writeThroughSandbox(outputPaths, tempDirectory, (targets) =>
+            deinterleave({
+              info,
+              groups,
+              outputPaths: targets,
+              signal,
+              onProgress: (fraction) =>
+                update(`Splitting ${groups.length} channels\u2026`, Math.round(fraction * 90)),
+            }),
+          );
 
           if (signal.aborted) throw new AbortedError();
 
@@ -733,7 +741,7 @@ async function splitClipToMono<V extends ApiVersion>(
           return { ok: true, clips: result.clipsCreated };
         } catch (error) {
           if (!placementStarted) {
-            await Promise.all(outputPaths.map((p) => fs.rm(p, { force: true }).catch(() => {})));
+            await Promise.all(outputPaths.map(removeFile));
           }
           if (error instanceof AbortedError) return { ok: false };
           return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
@@ -761,24 +769,34 @@ async function probeFile<V extends ApiVersion>(
   filePath: string,
   tempDirectory: string,
 ): Promise<AudioFileInfo> {
-  const native = await probeNative(filePath);
-  if (native) return native;
+  const readable = await readableCopy(filePath, tempDirectory);
 
-  const outcome = await context.ui.withinProgressDialog(
-    `Decoding ${path.basename(filePath)}\u2026`,
-    {},
-    async (): Promise<{ info?: AudioFileInfo; error?: Error }> => {
-      try {
-        return { info: await probeViaFfmpeg(filePath, tempDirectory) };
-      } catch (error) {
-        return { error: error instanceof Error ? error : new Error(String(error)) };
-      }
-    },
-  );
+  try {
+    const native = await probeNative(readable.path);
+    if (native) return readable.isCopy ? { ...native, decodedFrom: filePath } : native;
 
-  const result = outcome as { info?: AudioFileInfo; error?: Error };
-  if (result.error) throw result.error;
-  return result.info!;
+    // ffmpeg runs as its own, unsandboxed process, so it can read the original.
+    if (readable.isCopy) await fs.rm(readable.path, { force: true }).catch(() => {});
+
+    const outcome = await context.ui.withinProgressDialog(
+      `Decoding ${path.basename(filePath)}\u2026`,
+      {},
+      async (): Promise<{ info?: AudioFileInfo; error?: Error }> => {
+        try {
+          return { info: await probeViaFfmpeg(filePath, tempDirectory) };
+        } catch (error) {
+          return { error: error instanceof Error ? error : new Error(String(error)) };
+        }
+      },
+    );
+
+    const result = outcome as { info?: AudioFileInfo; error?: Error };
+    if (result.error) throw result.error;
+    return result.info!;
+  } catch (error) {
+    if (readable.isCopy) await fs.rm(readable.path, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 async function splitAndPlace<V extends ApiVersion>(
@@ -787,11 +805,12 @@ async function splitAndPlace<V extends ApiVersion>(
     info: AudioFileInfo;
     originalFileName: string;
     clipsDirectory: string;
+    tempDirectory: string;
     groups: ChannelGroup[];
     choice: DialogResult;
   },
 ): Promise<void> {
-  const { info, originalFileName, clipsDirectory, groups, choice } = args;
+  const { info, originalFileName, clipsDirectory, tempDirectory, groups, choice } = args;
   const baseName = path.parse(originalFileName).name;
 
   const outcome = await context.ui.withinProgressDialog(
@@ -805,20 +824,22 @@ async function splitAndPlace<V extends ApiVersion>(
       let placementStarted = false;
 
       try {
-        outputPaths = groups.map((group) =>
-          uniquePath(clipsDirectory, outputFileNameFor(baseName, group)),
+        outputPaths = await Promise.all(
+          groups.map((group) => uniquePath(clipsDirectory, outputFileNameFor(baseName, group))),
         );
 
         await update(`Splitting ${groups.length} channels…`, 0);
-        await deinterleave({
-          info,
-          groups,
-          outputPaths,
-          signal,
-          // Reserve the last 10% of the bar for creating tracks and clips.
-          onProgress: (fraction) =>
-            update(`Splitting ${groups.length} channels…`, Math.round(fraction * 90)),
-        });
+        await writeThroughSandbox(outputPaths, tempDirectory, (targets) =>
+          deinterleave({
+            info,
+            groups,
+            outputPaths: targets,
+            signal,
+            // Reserve the last 10% of the bar for creating tracks and clips.
+            onProgress: (fraction) =>
+              update(`Splitting ${groups.length} channels…`, Math.round(fraction * 90)),
+          }),
+        );
 
         if (signal.aborted) throw new AbortedError();
 
@@ -845,7 +866,7 @@ async function splitAndPlace<V extends ApiVersion>(
         // Split files are only useful attached to clips, so clean them up —
         // but only while we are sure nothing references them yet.
         if (!placementStarted) {
-          await Promise.all(outputPaths.map((p) => fs.rm(p, { force: true }).catch(() => {})));
+          await Promise.all(outputPaths.map(removeFile));
         }
         if (error instanceof AbortedError) return { ok: false };
         return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
